@@ -82,6 +82,21 @@ HitInfo trace(Ray ray) {
     return closest_hit;
 }
 
+// This corresponds to "Check the ray... let z be the first intersection point"
+HitInfo verify_intersections(Ray ray) {
+    HitInfo closest_hit;
+    closest_hit.hit = false;
+    closest_hit.t = 1e30; // A very large number (infinity)
+
+    for (int i = 0; i < NUM_SPHERES; ++i) {
+        HitInfo current_hit = intersect_sphere(ray, scene[i]);
+        if (current_hit.hit && current_hit.t < closest_hit.t) {
+            closest_hit = current_hit;
+        }
+    }
+    return closest_hit;
+}
+
 
 // --- Shadow Calculation ---
 // Corresponds to the "shadow feeler" part of the algorithm
@@ -96,7 +111,7 @@ float calculate_shadow(vec3 point, vec3 light_pos) {
     // If the shadow ray hits something before the light, the point is in shadow
     float light_dist = length(light_pos - point);
     if (shadow_hit.hit && shadow_hit.t < light_dist) {
-        return 0.3; // In shadow (not completely black for a softer look)
+        return 0.0; // In shadow
     }
     return 1.0; // Not in shadow
 }
@@ -124,8 +139,28 @@ vec3 phong_lighting(HitInfo info, vec3 light_pos, vec3 camera_pos) {
     float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32.0);
     vec3 specular = 0.5 * spec * vec3(1.0, 1.0, 1.0); // White highlights
 
-    // return ambient + diffuse + specular;
-    return diffuse;
+    return ambient + diffuse + specular;
+}
+
+// --- Main Ray Tracing Function ---
+vec3 RayTrace(Ray ray, int depth) {
+
+    // Nonrecursive Computations
+    // Check if the ray intersects any of the objects in the scene
+    HitInfo hit = verify_intersections(ray);
+
+    if (!hit.hit) {
+        // If there id no object intersection, we return the background color
+        return BACKGROUND_COLOR;
+    }
+    // If we hit an object, calculate its color using the Phong model
+    vec3 color = phong_lighting(hit, u_light_pos, u_camera_pos);
+
+    // Recursive Computations
+    if (depth == 0) {
+        return color; // Reached maximum depth
+    }
+    
 }
 
 
@@ -140,9 +175,16 @@ void main() {
     // This is the "For each pixel p" part from RayTraceMain()
     vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / u_resolution.y;
 
+    // The distance from the camera to the virtual viewing plane.
+    // A smaller value creates a wider field of view (like a wide-angle lens).
+    const float focal_length = 1;
+
+    // Maximum depth of the ray tracing
+    const int max_depth = 5
+
     Ray primary_ray;
     primary_ray.origin = u_camera_pos;
-    primary_ray.direction = normalize(vec3(uv, -1.0)); // Simple camera pointing down -Z
+    primary_ray.direction = normalize(vec3(uv, -focal_length)); // Simple camera pointing down -Z
 
     // --- Trace and Color ---
     // This calls the main RayTrace logic
