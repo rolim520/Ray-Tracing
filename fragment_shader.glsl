@@ -111,11 +111,11 @@ HitInfo intersect_plane(Ray ray) {
             // Set the material properties for the ground
             info.transparency = 0.0;
             info.refractive_index = 1.0;
-            info.reflectivity = 0.1; // A slightly reflective ground looks nice
+            info.reflectivity = 0.05; // A slightly reflective ground looks nice
 
             // --- Apply the Checkerboard Pattern ---
             vec3 color_white = vec3(0.9, 0.9, 0.9);
-            vec3 color_black = vec3(0.2, 0.2, 0.2);
+            vec3 color_black = vec3(0.1, 0.1, 0.1);
             
             // Use floor and mod on the x and z coordinates to create tiles.
             // If floor(x) + floor(z) is even, the color is white, otherwise it's black.
@@ -206,7 +206,7 @@ vec3 calculate_light_attenuation(vec3 point, vec3 light_pos) {
 // --- Phong Lighting Calculation (UPDATED) ---
 // Now uses the vec3 attenuation color for sophisticated, filtered shadows.
 vec3 phong_lighting(HitInfo info, vec3 light_pos, vec3 camera_pos) {
-    vec3 ambient = 0.1 * info.color;
+    vec3 ambient = 0.05 * info.color;
 
     // Calculate the light's attenuation color using our new, advanced function.
     vec3 attenuation = calculate_light_attenuation(info.position, light_pos);
