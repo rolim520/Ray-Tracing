@@ -157,35 +157,64 @@ HitInfo trace(Ray ray) {
 }
 
 
+// --- Light Attenuation Calculation (CORRECTED SEQUENTIAL FILTERING) ---
+// This version correctly blends the light filter based on transparency.
+vec3 calculate_light_attenuation(vec3 point, vec3 light_pos) {
+    // Start with a light filter of pure white (100% light passthrough).
+    vec3 light_filter = vec3(1.0); 
 
-// --- Shadow Calculation ---
-// Corresponds to the "shadow feeler" part of the algorithm
-// Checks if a point is in shadow by casting a ray to the light
-float calculate_shadow(vec3 point, vec3 light_pos) {
-    Ray shadow_ray;
-    shadow_ray.origin = point;
-    shadow_ray.direction = normalize(light_pos - point);
-    
-    HitInfo shadow_hit = trace(shadow_ray);
-
-    // If the shadow ray hits something before the light, the point is in shadow
     float light_dist = length(light_pos - point);
-    if (shadow_hit.hit && shadow_hit.t < light_dist) {
-        return 0.0; // In shadow
+    
+    Ray shadow_ray;
+    shadow_ray.origin = point + normalize(light_pos - point) * 0.001; 
+    shadow_ray.direction = normalize(light_pos - point);
+
+    float distance_traveled = 0.0;
+
+    for(int i = 0; i < 5; i++) { 
+        HitInfo hit = trace(shadow_ray);
+
+        if (hit.hit && (hit.t + distance_traveled < light_dist)) {
+            
+            // --- THE FIX IS HERE ---
+            // We calculate the filter for THIS object. It's a mix between pure black
+            // (no light) and the object's color, based on its transparency.
+            vec3 object_filter = mix(vec3(0.0), hit.color, hit.transparency);
+
+            // We then multiply our running light_filter by this object's filter.
+            light_filter *= object_filter;
+            
+            // If the light has been completely blocked, we can stop early.
+            if (dot(light_filter, light_filter) == 0.0) {
+                return vec3(0.0);
+            }
+            
+            // Continue tracing from the new position.
+            distance_traveled += hit.t;
+            shadow_ray.origin = hit.position + shadow_ray.direction * 0.001;
+
+        } else {
+            // No more objects in the path to the light.
+            break;
+        }
     }
-    return 1.0; // Not in shadow
+
+    return light_filter;
 }
 
 
-// --- Phong Lighting Calculation ---
-// Corresponds to "Set color = I_local"
+// --- Phong Lighting Calculation (UPDATED) ---
+// Now uses the vec3 attenuation color for sophisticated, filtered shadows.
 vec3 phong_lighting(HitInfo info, vec3 light_pos, vec3 camera_pos) {
     vec3 ambient = 0.1 * info.color;
 
-    // Calculate shadow factor
-    float shadow_factor = calculate_shadow(info.position, light_pos);
-    if (shadow_factor < 1.0) {
-        return ambient; // If in shadow, only return ambient light
+    // Calculate the light's attenuation color using our new, advanced function.
+    vec3 attenuation = calculate_light_attenuation(info.position, light_pos);
+
+    // If attenuation is black, we're in a full opaque shadow.
+    // We only contribute the ambient light term.
+    if (dot(attenuation, attenuation) == 0.0) {
+        return ambient;
     }
 
     // Diffuse
@@ -199,7 +228,9 @@ vec3 phong_lighting(HitInfo info, vec3 light_pos, vec3 camera_pos) {
     float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32.0);
     vec3 specular = 0.7 * spec * vec3(1.0, 1.0, 1.0); // White highlights
 
-    return ambient + diffuse + specular;
+    // Final color is the ambient term plus the diffuse and specular terms,
+    // which are filtered by the shadow's attenuation color.
+    return ambient + (diffuse + specular) * attenuation;
 }
 
 /**
@@ -325,7 +356,7 @@ vec3 RayTraceIterative(Ray initial_ray, int max_depth) {
 void main() {
     // --- Setup the Scene ---
     // This part is unchanged.
-    scene[0] = Sphere(vec3(0.0, 0.0, -0.6), 1.0, vec3(1.0, 1.0, 1.0), 0.0, 1.0, 1.5);
+    scene[0] = Sphere(vec3(0.0, 0.0, -0.6), 1.0, vec3(1.0, 1.0, 1.0), 0.1, 0.9, 1.5);
     scene[1] = Sphere(vec3(-0.5, -0.5, -3.0), 0.5, vec3(0.2, 1.0, 0.2), 0.1, 0.0, 1.5);
     scene[2] = Sphere(vec3(0.5, -0.5, -3.0), 0.5, vec3(0.2, 0.2, 1.0), 0.1, 0.0, 1.5);
     scene[3] = Sphere(vec3(0.0, 0.366, -3.0), 0.5, vec3(1.0, 0.2, 0.2), 0.1, 0.0, 1.5);
