@@ -85,22 +85,77 @@ HitInfo intersect_sphere(Ray ray, Sphere s) {
     return info;
 }
 
+// --- Ray-Plane Intersection ---
+// Calculates intersection with the horizontal ground plane and applies a checkerboard pattern.
+HitInfo intersect_plane(Ray ray) {
+    HitInfo info;
+    info.hit = false;
+    
+    // Define the ground plane at y = -1.0
+    const float ground_level = -1.0; 
+    const vec3 plane_normal = vec3(0.0, 1.0, 0.0);
 
-// --- Main Trace Function ---
-// This corresponds to "Check the ray... let z be the first intersection point"
+    // Calculate the distance 't' to the intersection point.
+    // The ray is parallel to the plane if the denominator is near zero.
+    float denominator = dot(ray.direction, plane_normal);
+    if (abs(denominator) > 0.0001) {
+        float t = (ground_level - ray.origin.y) / denominator;
+        
+        // Ensure the intersection is in front of the ray.
+        if (t > 0.001) {
+            info.hit = true;
+            info.t = t;
+            info.position = ray.origin + t * ray.direction;
+            info.normal = plane_normal;
+            
+            // Set the material properties for the ground
+            info.transparency = 0.0;
+            info.refractive_index = 1.0;
+            info.reflectivity = 0.2; // A slightly reflective ground looks nice
+
+            // --- Apply the Checkerboard Pattern ---
+            vec3 color_white = vec3(0.9, 0.9, 0.9);
+            vec3 color_black = vec3(0.2, 0.2, 0.2);
+            
+            // Use floor and mod on the x and z coordinates to create tiles.
+            // If floor(x) + floor(z) is even, the color is white, otherwise it's black.
+            if (mod(floor(info.position.x) + floor(info.position.z), 2.0) == 0.0) {
+                info.color = color_white;
+            } else {
+                info.color = color_black;
+            }
+        }
+    }
+    
+    return info;
+}
+
+
+// --- Main Trace Function (UPDATED) ---
+// This now checks for intersections with spheres AND the ground plane.
 HitInfo trace(Ray ray) {
     HitInfo closest_hit;
     closest_hit.hit = false;
     closest_hit.t = 1e30; // A very large number (infinity)
 
+    // Check intersections with all spheres in the scene
     for (int i = 0; i < NUM_SPHERES; ++i) {
         HitInfo current_hit = intersect_sphere(ray, scene[i]);
         if (current_hit.hit && current_hit.t < closest_hit.t) {
             closest_hit = current_hit;
         }
     }
+
+    // --- NEW: Check for intersection with the ground plane ---
+    HitInfo plane_hit = intersect_plane(ray);
+    if (plane_hit.hit && plane_hit.t < closest_hit.t) {
+        // If the plane was hit and is closer than any sphere, it's our new closest hit.
+        closest_hit = plane_hit;
+    }
+
     return closest_hit;
 }
+
 
 
 // --- Shadow Calculation ---
@@ -269,35 +324,50 @@ vec3 RayTraceIterative(Ray initial_ray, int max_depth) {
 
 void main() {
     // --- Setup the Scene ---
-    // We define the scene objects here
-    // A large glass sphere is placed in front of the camera.
-    scene[0] = Sphere(vec3(0.0, 0.0, -0.6), 1.0, vec3(1.0, 1.0, 1.0), 0.15, 0.9, 1.5);  // Large glass sphere
-
-    // Three RGB spheres are placed further back in a triangle formation.
-    // Top of the triangle
-    scene[1] = Sphere(vec3(0.0, 1.0, -5.0), 0.5, vec3(1.0, 0.2, 0.2), 0.2, 0.0, 1.5);  // Red sphere
-    // Bottom-left of the triangle
-    scene[2] = Sphere(vec3(-1.0, -0.5, -5.0), 0.5, vec3(0.2, 1.0, 0.2), 0.2, 0.0, 1.5); // Green sphere
-    // Bottom-right of the triangle
-    scene[3] = Sphere(vec3(1.0, -0.5, -5.0), 0.5, vec3(0.2, 0.2, 1.0), 0.2, 0.0, 1.5);  // Blue sphere
+    // This part is unchanged.
+    scene[0] = Sphere(vec3(0.0, 0.0, -0.6), 1.0, vec3(1.0, 1.0, 1.0), 0.0, 1.0, 1.5);
+    scene[1] = Sphere(vec3(-0.5, -0.5, -3.0), 0.5, vec3(0.2, 1.0, 0.2), 0.1, 0.0, 1.5);
+    scene[2] = Sphere(vec3(0.5, -0.5, -3.0), 0.5, vec3(0.2, 0.2, 1.0), 0.1, 0.0, 1.5);
+    scene[3] = Sphere(vec3(0.0, 0.366, -3.0), 0.5, vec3(1.0, 0.2, 0.2), 0.1, 0.0, 1.5);
 
     // --- Primary Ray Generation ---
-    // This is the "For each pixel p" part from RayTraceMain()
     vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / u_resolution.y;
 
-    // The distance from the camera to the virtual viewing plane.
-    // A smaller value creates a wider field of view (like a wide-angle lens).
-    const float focal_length = 1.0;
-
-    // Maximum depth of the ray tracing
+    const float focal_length = 1.5;
     const int max_depth = 10;
 
     Ray primary_ray;
-    primary_ray.origin = u_camera_pos;
-    primary_ray.direction = normalize(vec3(uv, -focal_length)); // Simple camera pointing down -Z
+    
+    // --- Manual Camera Setup ---
+    // This approach gives you direct control over the camera's position and orientation.
+    
+    // 1. Set the camera's position in the world.
+    primary_ray.origin = vec3(4, 1, -2); 
 
+    // 2. Define the direction the camera is looking. This is the 'forward' vector.
+    //    It must be a normalized direction vector. To look at the origin from the camera's
+    //    position, you would use: normalize(vec3(0.0) - primary_ray.origin)
+    // --- To move without rotating, we can define a fixed forward direction ---
+    // This camera will always look straight ahead along the world's negative Z-axis.
+    // Now, changing the z-component of primary_ray.origin will move the camera forward/backward.
+    vec3 camera_fwd = vec3(-1.0, -0.2, 0.0);
+
+    // 3. Define a temporary 'up' direction. This helps orient the camera.
+    //    It controls the camera's roll. For no roll, (0, 1, 0) is standard.
+    vec3 temp_up = vec3(0.0, 1.0, 0.0);
+
+    // 4. Calculate the camera's 'right' and true 'up' vectors to form an orthonormal basis.
+    //    This ensures the vectors are perpendicular, creating a stable view.
+    vec3 camera_right = normalize(cross(camera_fwd, temp_up));
+    vec3 camera_up = normalize(cross(camera_right, camera_fwd)); // Recalculate 'up' to ensure it's orthogonal
+
+    primary_ray.direction = normalize(
+        uv.x * camera_right + 
+        uv.y * camera_up + 
+        focal_length * camera_fwd
+    );
+    
     // --- Trace and Color ---
-    // This calls the main RayTrace logic
     vec3 final_color = RayTraceIterative(primary_ray, max_depth);
 
     FragColor = vec4(final_color, 1.0);
