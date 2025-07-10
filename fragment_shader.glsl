@@ -111,7 +111,7 @@ HitInfo intersect_plane(Ray ray) {
             // Set the material properties for the ground
             info.transparency = 0.0;
             info.refractive_index = 1.0;
-            info.reflectivity = 0.2; // A slightly reflective ground looks nice
+            info.reflectivity = 0.1; // A slightly reflective ground looks nice
 
             // --- Apply the Checkerboard Pattern ---
             vec3 color_white = vec3(0.9, 0.9, 0.9);
@@ -226,7 +226,7 @@ vec3 phong_lighting(HitInfo info, vec3 light_pos, vec3 camera_pos) {
     vec3 view_dir = normalize(camera_pos - info.position);
     vec3 reflect_dir = reflect(-light_dir, info.normal);
     float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32.0);
-    vec3 specular = 0.7 * spec * vec3(1.0, 1.0, 1.0); // White highlights
+    vec3 specular = 0.5 * spec * vec3(1.0, 1.0, 1.0); // White highlights
 
     // Final color is the ambient term plus the diffuse and specular terms,
     // which are filtered by the shadow's attenuation color.
@@ -268,28 +268,39 @@ vec3 RayTraceIterative(Ray initial_ray, int max_depth) {
     RayState stack[STACK_SIZE];
     int stack_ptr = 0;
 
-    // A small value to offset new rays to prevent self-intersection.
     const float RAY_EPSILON = 0.001;
 
-    // --- Push the initial ray onto the stack ---
     stack[stack_ptr].ray = initial_ray;
     stack[stack_ptr].throughput = vec3(1.0, 1.0, 1.0);
     stack[stack_ptr].depth = 0;
     stack[stack_ptr].current_refractive_index = 1.0;
     stack_ptr++;
 
-    // --- Process rays until the stack is empty ---
     while (stack_ptr > 0) {
         stack_ptr--;
         RayState current_state = stack[stack_ptr];
 
         HitInfo hit = trace(current_state.ray);
 
+        // --- THIS IS THE MODIFIED BLOCK ---
         if (!hit.hit) {
-            final_color += BACKGROUND_COLOR * current_state.throughput;
+            // If the ray misses all objects, calculate a procedural sky color
+            // instead of using a flat background color.
+            
+            // Define the colors for the sky gradient.
+            vec3 sky_color_zenith = vec3(0.5, 0.7, 1.0); // A nice light blue
+            vec3 sky_color_horizon = vec3(0.8, 0.9, 1.0); // A brighter, whiter horizon
+
+            // Use the ray's y-direction to blend between the two colors.
+            // A 't' of 0.0 is horizontal, 1.0 is straight up.
+            float t = 0.5 + 0.5 * current_state.ray.direction.y;
+            vec3 sky_color = mix(sky_color_horizon, sky_color_zenith, t);
+
+            final_color += sky_color * current_state.throughput;
             continue;
         }
 
+        // --- THE REST OF THE FUNCTION IS UNCHANGED ---
         vec3 outward_normal;
         float n1, n2;
         if (dot(current_state.ray.direction, hit.normal) < 0.0) {
@@ -315,15 +326,12 @@ vec3 RayTraceIterative(Ray initial_ray, int max_depth) {
             continue;
         }
 
-        // --- Handle Refraction (Transparency) ---
         if (hit.transparency > 0.0) {
             vec3 refraction_dir = refract(current_state.ray.direction, outward_normal, n1 / n2);
             if (dot(refraction_dir, refraction_dir) > 0.0 && stack_ptr < STACK_SIZE) {
                 RayState refracted_state;
-                // Bias the origin along the new direction to prevent self-intersection.
                 refracted_state.ray.origin = hit.position + refraction_dir * RAY_EPSILON;
                 refracted_state.ray.direction = refraction_dir;
-
                 refracted_state.throughput = current_state.throughput * (1.0 - fresnel_reflectance) * hit.transparency * hit.color;
                 refracted_state.depth = current_state.depth + 1;
                 refracted_state.current_refractive_index = n2;
@@ -332,15 +340,12 @@ vec3 RayTraceIterative(Ray initial_ray, int max_depth) {
             }
         }
 
-        // --- Handle Reflection ---
         float total_reflectivity = hit.reflectivity + (1.0 - hit.reflectivity) * fresnel_reflectance;
         if (total_reflectivity > 0.0) {
             if (stack_ptr < STACK_SIZE) {
                 RayState reflected_state;
-                
                 reflected_state.ray.origin = hit.position + outward_normal * RAY_EPSILON;
-                reflected_state.ray.direction = reflect(current_state.ray.direction, outward_normal);;
-                
+                reflected_state.ray.direction = reflect(current_state.ray.direction, outward_normal);
                 reflected_state.throughput = current_state.throughput * total_reflectivity;
                 reflected_state.depth = current_state.depth + 1;
                 reflected_state.current_refractive_index = current_state.current_refractive_index;
@@ -357,9 +362,9 @@ void main() {
     // --- Setup the Scene ---
     // This part is unchanged.
     scene[0] = Sphere(vec3(0.0, 0.0, -0.6), 1.0, vec3(1.0, 1.0, 1.0), 0.1, 0.9, 1.5);
-    scene[1] = Sphere(vec3(-0.5, -0.5, -3.0), 0.5, vec3(0.2, 1.0, 0.2), 0.1, 0.0, 1.5);
-    scene[2] = Sphere(vec3(0.5, -0.5, -3.0), 0.5, vec3(0.2, 0.2, 1.0), 0.1, 0.0, 1.5);
-    scene[3] = Sphere(vec3(0.0, 0.366, -3.0), 0.5, vec3(1.0, 0.2, 0.2), 0.1, 0.0, 1.5);
+    scene[1] = Sphere(vec3(-0.5, -0.5, -3.0), 0.5, vec3(0.2, 1.0, 0.2), 0.05, 0.0, 1.5);
+    scene[2] = Sphere(vec3(0.5, -0.5, -3.0), 0.5, vec3(0.2, 0.2, 1.0), 0.05, 0.0, 1.5);
+    scene[3] = Sphere(vec3(0.0, 0.366, -3.0), 0.5, vec3(1.0, 0.2, 0.2), 0.05, 0.0, 1.5);
 
     // --- Primary Ray Generation ---
     vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / u_resolution.y;
@@ -373,7 +378,7 @@ void main() {
     // This approach gives you direct control over the camera's position and orientation.
     
     // 1. Set the camera's position in the world.
-    primary_ray.origin = vec3(4, 1, -2); 
+    primary_ray.origin = u_camera_pos;
 
     // 2. Define the direction the camera is looking. This is the 'forward' vector.
     //    It must be a normalized direction vector. To look at the origin from the camera's
@@ -381,7 +386,7 @@ void main() {
     // --- To move without rotating, we can define a fixed forward direction ---
     // This camera will always look straight ahead along the world's negative Z-axis.
     // Now, changing the z-component of primary_ray.origin will move the camera forward/backward.
-    vec3 camera_fwd = vec3(-1.0, -0.2, 0.0);
+    vec3 camera_fwd = vec3(-1.0, -0.3, 0.0);
 
     // 3. Define a temporary 'up' direction. This helps orient the camera.
     //    It controls the camera's roll. For no roll, (0, 1, 0) is standard.

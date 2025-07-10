@@ -103,7 +103,8 @@ def main():
 
         # Pass uniforms to the shader
         glUniform2f(glGetUniformLocation(shader_program, "u_resolution"), window_width, window_height)
-        glUniform3f(glGetUniformLocation(shader_program, "u_camera_pos"), 0.0, 0.0, 1.0)
+        # Set the desired side-view camera position from Python
+        glUniform3f(glGetUniformLocation(shader_program, "u_camera_pos"), 4.0, 1.0, -2.0)
         glUniform3f(glGetUniformLocation(shader_program, "u_light_pos"), -2.0, 2.0, 1.0)
         
         # Draw the quad
