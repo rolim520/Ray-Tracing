@@ -34,7 +34,7 @@ struct Sphere {
 // --- Scene Definition ---
 const int NUM_SPHERES = 3;
 Sphere scene[NUM_SPHERES];
-const vec3 BACKGROUND_COLOR = vec3(0.1, 0.15, 0.2); // Corresponds to "Return the background color"
+const vec3 BACKGROUND_COLOR = vec3(0.1, 0.1, 0.1); // Corresponds to "Return the background color"
 
 // Forward declaration for the recursive function
 vec3 RayTrace(Ray ray, int depth);
@@ -111,7 +111,7 @@ float calculate_shadow(vec3 point, vec3 light_pos) {
 // --- Phong Lighting Calculation ---
 // Corresponds to "Set color = I_local"
 vec3 phong_lighting(HitInfo info, vec3 light_pos, vec3 camera_pos) {
-    vec3 ambient = 0.01 * info.color;
+    vec3 ambient = 0.15 * info.color;
 
     // Calculate shadow factor
     float shadow_factor = calculate_shadow(info.position, light_pos);
@@ -128,7 +128,7 @@ vec3 phong_lighting(HitInfo info, vec3 light_pos, vec3 camera_pos) {
     vec3 view_dir = normalize(camera_pos - info.position);
     vec3 reflect_dir = reflect(-light_dir, info.normal);
     float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32.0);
-    vec3 specular = 0.5 * spec * vec3(1.0, 1.0, 1.0); // White highlights
+    vec3 specular = 0.7 * spec * vec3(1.0, 1.0, 1.0); // White highlights
 
     return ambient + diffuse + specular;
 }
@@ -164,13 +164,63 @@ vec3 RayTrace(Ray ray, int depth) {
     return mix(local_color, reflected_color, hit.reflectivity);
 }
 
+/**
+ * An iterative version of the RayTrace function.
+ *
+ * @param initial_ray The first ray cast from the camera.
+ * @param max_depth The maximum number of times a ray is allowed to bounce.
+ * @return The final calculated color for the ray path.
+ */
+vec3 RayTraceIterative(Ray initial_ray, int max_depth) {
+
+    vec3 final_color = vec3(0.0, 0.0, 0.0); // The accumulated color, starts at black.
+    float throughput = 1.0;                  // The accumulated reflectivity, starts at 1.0.
+    Ray current_ray = initial_ray;           // The ray for the current iteration.
+
+    for (int depth = 0; depth < max_depth; ++depth) {
+        // Trace the current ray to find the closest intersection.
+        HitInfo hit = trace(current_ray);
+
+        // --- Termination Case 1: Ray misses all objects. ---
+        // Add the background color, attenuated by the path's throughput, and stop.
+        if (!hit.hit) {
+            final_color += BACKGROUND_COLOR * throughput;
+            break; // Exit the loop.
+        }
+
+        // We have an intersection, so calculate its direct illumination (Phong).
+        vec3 local_color = phong_lighting(hit, u_light_pos, u_camera_pos);
+
+        // --- Termination Case 2: Final bounce. ---
+        // This happens if the surface is not reflective or we've reached the depth limit.
+        // Add the full local color (attenuated by throughput) and stop.
+        if (hit.reflectivity <= 0.0 || depth == max_depth - 1) {
+            final_color += local_color * throughput;
+            break; // Exit the loop.
+        }
+
+        // --- Continuation Case: The ray bounces. ---
+        // Add the local color's contribution, weighted by (1 - reflectivity).
+        final_color += local_color * (1.0 - hit.reflectivity) * throughput;
+
+        // Update throughput for the next bounce.
+        throughput *= hit.reflectivity;
+
+        // Update the ray to be the new reflected ray for the next iteration.
+        current_ray.origin = hit.position;
+        current_ray.direction = reflect(current_ray.direction, hit.normal);
+    }
+
+    return final_color;
+}
+
 
 void main() {
     // --- Setup the Scene ---
     // We define the scene objects here
-    scene[0] = Sphere(vec3(0.0, 0.0, -1.0), 0.5, vec3(1.0, 0.2, 0.2), 0.8);  // Red sphere
-    scene[1] = Sphere(vec3(-1.2, 0.0, -2.0), 0.5, vec3(0.2, 1.0, 0.2), 0.2); // Green sphere
-    scene[2] = Sphere(vec3(1.2, 0.0, -2.0), 0.5, vec3(0.2, 0.2, 1.0), 0.2);  // Blue sphere
+    scene[0] = Sphere(vec3(0.0, 0.0, -2.0), 0.5, vec3(1.0, 0.2, 0.2), 0.5);  // Red sphere
+    scene[1] = Sphere(vec3(-1.2, 0.0, -2.0), 0.5, vec3(0.2, 1.0, 0.2), 0.5); // Green sphere
+    scene[2] = Sphere(vec3(1.2, 0.0, -2.0), 0.5, vec3(0.2, 0.2, 1.0), 0.5);  // Blue sphere
 
     // --- Primary Ray Generation ---
     // This is the "For each pixel p" part from RayTraceMain()
@@ -181,7 +231,7 @@ void main() {
     const float focal_length = 1.0;
 
     // Maximum depth of the ray tracing
-    const int max_depth = 5;
+    const int max_depth = 10;
 
     Ray primary_ray;
     primary_ray.origin = u_camera_pos;
@@ -189,7 +239,7 @@ void main() {
 
     // --- Trace and Color ---
     // This calls the main RayTrace logic
-    vec3 final_color = RayTrace(primary_ray, max_depth);
+    vec3 final_color = RayTraceIterative(primary_ray, max_depth);
 
     FragColor = vec4(final_color, 1.0);
 }
