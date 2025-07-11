@@ -139,104 +139,164 @@ HitInfo intersect_plane(Ray ray) {
     return info;
 }
 
-int solve_quartic(float a, float b, float c, float d, out vec4 roots) {
-    // Depress the quartic: x = y - a/4
-    float a2 = a * a;
-    float p  = -3.0/8.0 * a2 + b;
-    float q  =  1.0/8.0 * a2 * a - 0.5 * a * b + c;
-    float r  = -3.0/256.0 * a2 * a2 + 1.0/16.0 * a2 * b - 0.25 * a * c + d;
+// Define a small epsilon for floating point comparisons
+const float EPS = 1e-7;
 
+/**
+ * @brief Solves a quadratic equation ax^2 + bx + c = 0 for real roots.
+ * @param a The coefficient of the x^2 term.
+ * @param b The coefficient of the x term.
+ * @param c The constant term.
+ * @param roots An output vector to store the real roots.
+ * @return The number of real roots found (0, 1, or 2).
+ */
+int solve_quadratic(float a, float b, float c, out vec2 roots) {
+    if (abs(a) < EPS) { // Linear equation
+        if (abs(b) < EPS) return 0; // 0 = c, no solution or infinite solutions
+        roots[0] = -c / b;
+        return 1;
+    }
+    
+    float discriminant = b*b - 4.0*a*c;
+    
+    if (discriminant < -EPS) {
+        return 0; // No real roots
+    }
+    
+    discriminant = max(0.0, discriminant);
+    float sqrt_d = sqrt(discriminant);
+    float inv_2a = 0.5 / a;
+    
+    roots[0] = (-b + sqrt_d) * inv_2a;
+    roots[1] = (-b - sqrt_d) * inv_2a;
+    
+    return (discriminant < EPS) ? 1 : 2;
+}
+
+/**
+ * @brief Solves a cubic equation ax^3 + bx^2 + cx + d = 0 for real roots.
+ * Uses Cardano's method with a trigonometric solution for the 3-real-root case.
+ * @param a The coefficient of the x^3 term.
+ * @param b The coefficient of the x^2 term.
+ * @param c The coefficient of the x term.
+ * @param d The constant term.
+ * @param roots An output vector to store the real roots.
+ * @return The number of real roots found (1, 2, or 3).
+ */
+int solve_cubic(float a, float b, float c, float d, out vec3 roots) {
+    if (abs(a) < EPS) { // Not a cubic, solve as a quadratic
+        vec2 quad_roots;
+        int num = solve_quadratic(b, c, d, quad_roots);
+        for(int i=0; i<num; ++i) roots[i] = quad_roots[i];
+        return num;
+    }
+    
+    // Normalize to a monic cubic: x^3 + a'x^2 + b'x + c' = 0
+    float inv_a = 1.0 / a;
+    float an = b * inv_a;
+    float bn = c * inv_a;
+    float cn = d * inv_a;
+    
+    // Depress the cubic: y^3 + py + q = 0, where x = y - an/3
+    float an2 = an * an;
+    float p = bn - an2 / 3.0;
+    float q = cn - an * bn / 3.0 + 2.0 * an2 * an / 27.0;
+    float offset = an / 3.0;
+    
+    // Solve the depressed cubic
+    float half_q = 0.5 * q;
+    float p3_27 = p*p*p / 27.0;
+    float discriminant = half_q*half_q + p3_27;
+
+    if (discriminant >= -EPS) { // 1 real root (Cardano's formula)
+        discriminant = max(0.0, discriminant);
+        float sqrt_d = sqrt(discriminant);
+        float A = -half_q + sqrt_d;
+        float B = -half_q - sqrt_d;
+        float rootA = sign(A) * pow(abs(A), 1.0/3.0);
+        float rootB = sign(B) * pow(abs(B), 1.0/3.0);
+        
+        roots[0] = rootA + rootB - offset;
+        return 1;
+    } else { // 3 real roots (Trigonometric solution)
+        const float TWO_PI_3 = 2.09439510239; // 2*PI/3
+        float rho = sqrt(-p*p*p / 27.0);
+        float theta = acos(clamp(-half_q / rho, -1.0, 1.0)) / 3.0;
+        float m = 2.0 * sqrt(-p/3.0);
+
+        roots[0] = m * cos(theta) - offset;
+        roots[1] = m * cos(theta + TWO_PI_3) - offset;
+        roots[2] = m * cos(theta - TWO_PI_3) - offset;
+        return 3;
+    }
+}
+
+/**
+ * @brief Solves a monic quartic equation x^4 + ax^3 + bx^2 + cx + d = 0 for real roots.
+ * Uses Ferrari's method, which involves solving a resolvent cubic.
+ * @param a The coefficient of the x^3 term.
+ * @param b The coefficient of the x^2 term.
+ * @param c The coefficient of the x term.
+ * @param d The constant term.
+ * @param roots An output vector to store the real roots.
+ * @return The number of real roots found (0, 1, 2, 3, or 4).
+ */
+int solve_quartic(float a, float b, float c, float d, out vec4 roots) {
+    // Depress the quartic: x = y - a/4 -> y^4 + py^2 + qy + r = 0
+    float a2 = a * a;
+    float p  = b - 3.0/8.0 * a2;
+    float q  = c - 0.5 * a * b + 1.0/8.0 * a2 * a;
+    float r  = d - 0.25 * a * c + 1.0/16.0 * a2 * b - 3.0/256.0 * a2 * a2;
+    float offset = 0.25 * a;
+    
     int numRoots = 0;
-    const float EPS = 1e-7;
 
     // --- Case 1: Biquadratic (q ≈ 0) ---
+    // The equation becomes y^4 + py^2 + r = 0, which is a quadratic in y^2.
     if (abs(q) < EPS) {
-        float discr = p*p - 4.0*r;
-        if (discr < -EPS) return 0;
-        discr = max(discr, 0.0);
-        float s = sqrt(discr);
-        
-        // z1, z2 are y^2 solutions 
-        float z1 = 0.5 * (-p + s);
-        float z2 = 0.5 * (-p - s);
-
-        // For each positive z, we get two y = ±√z, then x = y - a/4
-        if (z1 >= -EPS) {
-            z1 = max(z1, 0.0);
-            float y = sqrt(z1);
-            roots[numRoots++] = -0.25*a +  y;
-            roots[numRoots++] = -0.25*a + -y;
-        }
-        if (discr > EPS && z2 >= -EPS) {
-            z2 = max(z2, 0.0);
-            float y = sqrt(z2);
-            roots[numRoots++] = -0.25*a +  y;
-            roots[numRoots++] = -0.25*a + -y;
+        vec2 y2_roots;
+        int num_y2_roots = solve_quadratic(1.0, p, r, y2_roots);
+        for (int i = 0; i < num_y2_roots; ++i) {
+            float z = y2_roots[i];
+            if (z >= -EPS) {
+                float y = sqrt(max(0.0, z));
+                roots[numRoots++] =  y - offset;
+                if (y > EPS) { // Avoid adding the same root twice if y=0
+                    roots[numRoots++] = -y - offset;
+                }
+            }
         }
         return numRoots;
     }
+    
+    // --- Case 2: General quartic (Ferrari’s method) ---
+    // Solve the resolvent cubic: u^3 + 2pu^2 + (p^2 - 4r)u - q^2 = 0
+    vec3 cubic_roots;
+    solve_cubic(1.0, 2.0*p, p*p - 4.0*r, -q*q, cubic_roots);
+    
+    // Pick the largest real root for u. It's guaranteed to be non-negative
+    // if the original quartic has real roots.
+    float u = cubic_roots[0];
 
-    // --- Case 2: General quartic via Ferrari’s method ---
-    // Solve resolvent cubic: u^3 + 2pu^2 + (p^2 - 4r)u - q^2 = 0
-    float ca = 2.0 * p;
-    float cb = p*p - 4.0*r;
-    float cc = -q*q;
-
-    // Depress cubic: let u = t - ca/3 => t^3 + c_p * t + c_q = 0
-    float ca2 = ca * ca;
-    float c_p = cb - ca2 / 3.0;
-    float c_q = cc - ca * cb / 3.0 + 2.0 * ca2 * ca / 27.0;
-
-    // Discriminant of depressed cubic
-    float half_cq = 0.5 * c_q;
-    float disc_cub = half_cq*half_cq + (c_p*c_p*c_p)/27.0;
-
-    float u;
-    if (disc_cub >= -EPS) {
-        // One real root
-        disc_cub = max(disc_cub, 0.0);
-        float sqrt_d = sqrt(disc_cub);
-        float A = -half_cq + sqrt_d;
-        float B = -half_cq - sqrt_d;
-        // Cube roots (with sign)
-        float rootA = sign(A) * pow(abs(A), 1.0/3.0);
-        float rootB = sign(B) * pow(abs(B), 1.0/3.0);
-        u = rootA + rootB - ca/3.0;
-    } else {
-        // Three real roots — pick the largest
-        float rho = sqrt(-c_p*c_p*c_p/27.0);
-        float theta = acos(clamp(-half_cq / rho, -1.0, 1.0)) / 3.0;
-        float m = 2.0 * sqrt(-c_p/3.0);
-        float t0 = m * cos(theta);
-        float t1 = m * cos(theta + 2.0943951);
-        float t2 = m * cos(theta - 2.0943951);
-        u = max(t0, max(t1, t2)) - ca/3.0;
-    }
-    u = max(u, 0.0);     // ensures sqrt(u) is real
+    // u must be non-negative to proceed.
+    if (u < 0.0) return 0;
+    
     float w = sqrt(u);
 
-    // Now split into two quadratics:
-    float term1 = 0.5 * (p + u);
-    float term2 = q / (2.0 * w + EPS);
-
-    // Solve y^2 + w*y + (term1 - term2) = 0
-    float D1 = w*w - 4.0*(term1 - term2);
-    if (D1 >= -EPS) {
-        D1 = max(D1, 0.0);
-        float s1 = sqrt(D1);
-        roots[numRoots++] = -0.25*a + 0.5*(-w + s1);
-        roots[numRoots++] = -0.25*a + 0.5*(-w - s1);
-    }
-
-    // Solve y^2 - w*y + (term1 + term2) = 0
-    float D2 = w*w - 4.0*(term1 + term2);
-    if (D2 >= -EPS) {
-        D2 = max(D2, 0.0);
-        float s2 = sqrt(D2);
-        roots[numRoots++] = -0.25*a + 0.5*( w + s2);
-        roots[numRoots++] = -0.25*a + 0.5*( w - s2);
-    }
-
+    // Solve the two quadratic equations for y:
+    // (y^2 + w*y + (p/2 + u/2 - q/(2w))) = 0
+    // (y^2 - w*y + (p/2 + u/2 + q/(2w))) = 0
+    float term_A = 0.5 * p + 0.5 * u;
+    float term_B = 0.5 * q / (w + EPS); // Add EPS for stability if w is near zero
+    
+    vec2 quad_roots1;
+    int num1 = solve_quadratic(1.0, w, term_A - term_B, quad_roots1);
+    for(int i=0; i<num1; ++i) roots[numRoots++] = quad_roots1[i] - offset;
+    
+    vec2 quad_roots2;
+    int num2 = solve_quadratic(1.0, -w, term_A + term_B, quad_roots2);
+    for(int i=0; i<num2; ++i) roots[numRoots++] = quad_roots2[i] - offset;
+    
     return numRoots;
 }
 
