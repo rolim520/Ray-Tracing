@@ -35,6 +35,18 @@ struct Sphere {
     float refractive_index;
 };
 
+// A torus is a center, orientation, radii, and material properties.
+struct Torus {
+    vec3 center;
+    vec3 normal; // The axis the torus is wrapped around (e.g., (0,1,0) for a flat donut)
+    float major_radius;
+    float minor_radius;
+    vec3 color;
+    float reflectivity;
+    float transparency;
+    float refractive_index;
+};
+
 // --- New Data Structure for the Iterative Stack ---
 struct RayState {
     Ray ray;
@@ -46,6 +58,7 @@ struct RayState {
 // --- Scene Definition ---
 const int NUM_SPHERES = 4;
 Sphere scene[NUM_SPHERES];
+Torus scene_torus;
 const vec3 BACKGROUND_COLOR = vec3(0.1, 0.1, 0.1); // Corresponds to "Return the background color"
 
 // Forward declaration for the recursive function
@@ -130,9 +143,197 @@ HitInfo intersect_plane(Ray ray) {
     return info;
 }
 
+int solve_quartic(float a, float b, float c, float d, out vec4 roots) {
+    // Depress the quartic: x = y - a/4
+    float a2 = a * a;
+    float p  = -3.0/8.0 * a2 + b;
+    float q  =  1.0/8.0 * a2 * a - 0.5 * a * b + c;
+    float r  = -3.0/256.0 * a2 * a2 + 1.0/16.0 * a2 * b - 0.25 * a * c + d;
 
-// --- Main Trace Function (UPDATED) ---
-// This now checks for intersections with spheres AND the ground plane.
+    int numRoots = 0;
+    const float EPS = 1e-7;
+
+    // --- Case 1: Biquadratic (q ≈ 0) ---
+    if (abs(q) < EPS) {
+        float discr = p*p - 4.0*r;
+        if (discr < -EPS) return 0;
+        discr = max(discr, 0.0);
+        float s = sqrt(discr);
+        
+        // z1, z2 are y^2 solutions 
+        float z1 = 0.5 * (-p + s);
+        float z2 = 0.5 * (-p - s);
+
+        // For each positive z, we get two y = ±√z, then x = y - a/4
+        if (z1 >= -EPS) {
+            z1 = max(z1, 0.0);
+            float y = sqrt(z1);
+            roots[numRoots++] = -0.25*a +  y;
+            roots[numRoots++] = -0.25*a + -y;
+        }
+        if (discr > EPS && z2 >= -EPS) {
+            z2 = max(z2, 0.0);
+            float y = sqrt(z2);
+            roots[numRoots++] = -0.25*a +  y;
+            roots[numRoots++] = -0.25*a + -y;
+        }
+        return numRoots;
+    }
+
+    // --- Case 2: General quartic via Ferrari’s method ---
+    // Solve resolvent cubic: u^3 + 2pu^2 + (p^2 - 4r)u - q^2 = 0
+    float ca = 2.0 * p;
+    float cb = p*p - 4.0*r;
+    float cc = -q*q;
+
+    // Depress cubic: let u = t - ca/3 => t^3 + c_p * t + c_q = 0
+    float ca2 = ca * ca;
+    float c_p = cb - ca2 / 3.0;
+    float c_q = cc - ca * cb / 3.0 + 2.0 * ca2 * ca / 27.0;
+
+    // Discriminant of depressed cubic
+    float half_cq = 0.5 * c_q;
+    float disc_cub = half_cq*half_cq + (c_p*c_p*c_p)/27.0;
+
+    float u;
+    if (disc_cub >= -EPS) {
+        // One real root
+        disc_cub = max(disc_cub, 0.0);
+        float sqrt_d = sqrt(disc_cub);
+        float A = -half_cq + sqrt_d;
+        float B = -half_cq - sqrt_d;
+        // Cube roots (with sign)
+        float rootA = sign(A) * pow(abs(A), 1.0/3.0);
+        float rootB = sign(B) * pow(abs(B), 1.0/3.0);
+        u = rootA + rootB - ca/3.0;
+    } else {
+        // Three real roots — pick the largest
+        float rho = sqrt(-c_p*c_p*c_p/27.0);
+        float theta = acos(clamp(-half_cq / rho, -1.0, 1.0)) / 3.0;
+        float m = 2.0 * sqrt(-c_p/3.0);
+        float t0 = m * cos(theta);
+        float t1 = m * cos(theta + 2.0943951);
+        float t2 = m * cos(theta - 2.0943951);
+        u = max(t0, max(t1, t2)) - ca/3.0;
+    }
+    u = max(u, 0.0);     // ensures sqrt(u) is real
+    float w = sqrt(u);
+
+    // Now split into two quadratics:
+    float term1 = 0.5 * (p + u);
+    float term2 = q / (2.0 * w + EPS);
+
+    // Solve y^2 + w*y + (term1 - term2) = 0
+    float D1 = w*w - 4.0*(term1 - term2);
+    if (D1 >= -EPS) {
+        D1 = max(D1, 0.0);
+        float s1 = sqrt(D1);
+        roots[numRoots++] = -0.25*a + 0.5*(-w + s1);
+        roots[numRoots++] = -0.25*a + 0.5*(-w - s1);
+    }
+
+    // Solve y^2 - w*y + (term1 + term2) = 0
+    float D2 = w*w - 4.0*(term1 + term2);
+    if (D2 >= -EPS) {
+        D2 = max(D2, 0.0);
+        float s2 = sqrt(D2);
+        roots[numRoots++] = -0.25*a + 0.5*( w + s2);
+        roots[numRoots++] = -0.25*a + 0.5*( w - s2);
+    }
+
+    return numRoots;
+}
+
+
+
+// --- Corrected Ray-Torus Intersection ---
+HitInfo intersect_torus(Ray ray, Torus torus) {
+    HitInfo info;
+    info.hit = false;
+
+    // --- Transform ray to torus's local space (Your code is correct) ---
+    vec3 local_ray_origin = ray.origin - torus.center;
+    vec3 w_axis = normalize(torus.normal);
+    vec3 u_axis = normalize(cross(w_axis, abs(w_axis.y) > 0.99 ? vec3(1,0,0) : vec3(0,1,0) ));
+    vec3 v_axis = cross(w_axis, u_axis);
+    vec3 ro = vec3(dot(local_ray_origin, u_axis), dot(local_ray_origin, w_axis), dot(local_ray_origin, v_axis));
+    vec3 rd = vec3(dot(ray.direction, u_axis), dot(ray.direction, w_axis), dot(ray.direction, v_axis));
+
+    // --- [START OF CORRECTION] Solve Quartic Equation for local-space intersection ---
+    float R = torus.major_radius;
+    float r = torus.minor_radius;
+    float R2 = R * R;
+    float r2 = r * r;
+
+    // These coefficients are for a quartic equation At^4 + Bt^3 + Ct^2 + Dt + E = 0,
+    // where A is 1 because the ray direction is normalized.
+    // The code passes a,b,c,d for t^4 + a*t^3 + b*t^2 + c*t + d = 0
+    
+    float m = dot(ro, ro);
+    float n = dot(ro, rd);
+    
+    // This term is part of the standard derivation (see link below)
+    float term = m - r2 - R2;
+
+    float a = 4.0 * n;
+    float b = 2.0 * term + 4.0 * n * n + 4.0 * R2 * rd.y * rd.y;
+    float c = 4.0 * n * term + 8.0 * R2 * ro.y * rd.y;
+    float d = term * term - 4.0 * R2 * (r2 - ro.y * ro.y);
+
+    // The quartic solver expects coefficients for t^4 + a*t^3 + ...
+    // The formula we used gives coefficients for a general quartic.
+    // Since dot(rd,rd) is 1, the t^4 coefficient is 1, so the coefficients match.
+    // However, the standard formula is (p.p + R^2 - r^2)^2 = 4R^2(p.x^2+p.z^2)
+    // Let's use a known-good set of coefficients derived from that equation.
+    
+    // Re-deriving based on (dot(p,p) + R^2 - r^2)^2 = 4R^2(p.x^2 + p.z^2)
+    float rd_dxz = rd.x*rd.x + rd.z*rd.z;
+    float ro_rd_dxz = ro.x*rd.x + ro.z*rd.z;
+    float ro_dxz = ro.x*ro.x + ro.z*ro.z;
+    
+    float k = m + R2 - r2;
+
+    float A_coeff = 4.0 * n;
+    float B_coeff = 2.0 * k + 4.0 * n * n - 4.0 * R2 * rd_dxz;
+    float C_coeff = 4.0 * n * k - 8.0 * R2 * ro_rd_dxz;
+    float D_coeff = k * k - 4.0 * R2 * ro_dxz;
+
+    vec4 roots;
+    int num_roots = solve_quartic(A_coeff, B_coeff, C_coeff, D_coeff, roots);
+    // --- [END OF CORRECTION] ---
+
+    float t = 1e20;
+    bool found_root = false;
+    for (int i = 0; i < num_roots; i++) {
+        if (roots[i] > 0.001 && roots[i] < t) {
+            t = roots[i];
+            found_root = true;
+        }
+    }
+
+    if (!found_root) return info;
+
+    // --- If hit, calculate world-space properties (Your code is correct) ---
+    info.hit = true;
+    info.t = t;
+    info.position = ray.origin + t * ray.direction;
+    
+    vec3 hit_pos_local = ro + t * rd;
+    float alpha = R / sqrt(hit_pos_local.x*hit_pos_local.x + hit_pos_local.z*hit_pos_local.z);
+    vec3 normal_local = normalize(vec3(hit_pos_local.x * (1.0 - alpha), hit_pos_local.y, hit_pos_local.z * (1.0 - alpha)));
+
+    info.normal = normalize(normal_local.x * u_axis + normal_local.y * w_axis + normal_local.z * v_axis);
+
+    info.color = torus.color;
+    info.reflectivity = torus.reflectivity;
+    info.transparency = torus.transparency;
+    info.refractive_index = torus.refractive_index;
+
+    return info;
+}
+
+
+// This version correctly checks for intersections with the torus.
 HitInfo trace(Ray ray) {
     HitInfo closest_hit;
     closest_hit.hit = false;
@@ -146,18 +347,24 @@ HitInfo trace(Ray ray) {
         }
     }
 
-    // --- NEW: Check for intersection with the ground plane ---
+    // Check for intersection with the ground plane
     HitInfo plane_hit = intersect_plane(ray);
     if (plane_hit.hit && plane_hit.t < closest_hit.t) {
-        // If the plane was hit and is closer than any sphere, it's our new closest hit.
         closest_hit = plane_hit;
     }
+
+    // Check for intersection with the torus.
+    HitInfo torus_hit = intersect_torus(ray, scene_torus);
+    if (torus_hit.hit && torus_hit.t < closest_hit.t) {
+        closest_hit = torus_hit;
+    }
+    // -----------------------------
 
     return closest_hit;
 }
 
 
-// --- Light Attenuation Calculation (CORRECTED SEQUENTIAL FILTERING) ---
+// --- Light Attenuation Calculation
 // This version correctly blends the light filter based on transparency.
 vec3 calculate_light_attenuation(vec3 point, vec3 light_pos) {
     // Start with a light filter of pure white (100% light passthrough).
@@ -360,11 +567,24 @@ vec3 RayTraceIterative(Ray initial_ray, int max_depth) {
 
 void main() {
     // --- Setup the Scene ---
-    // This part is unchanged.
-    scene[0] = Sphere(vec3(0.0, 0.0, -0.6), 1.0, vec3(1.0, 1.0, 1.0), 0.1, 0.9, 1.5);
-    scene[1] = Sphere(vec3(-0.5, -0.5, -3.0), 0.5, vec3(0.2, 1.0, 0.2), 0.05, 0.0, 1.5);
-    scene[2] = Sphere(vec3(0.5, -0.5, -3.0), 0.5, vec3(0.2, 0.2, 1.0), 0.05, 0.0, 1.5);
-    scene[3] = Sphere(vec3(0.0, 0.366, -3.0), 0.5, vec3(1.0, 0.2, 0.2), 0.05, 0.0, 1.5);
+    // The ground plane is at y = -1.0.
+
+    // The spheres making up the pyramid
+    scene[0] = Sphere(vec3(0.0, 0.0, -0.6), 1.0, vec3(1.0, 1.0, 1.0), 0.1, 0.9, 1.5); // Glass Sphere (Not used in pyramid)
+    scene[1] = Sphere(vec3(-0.5, -0.5, -3.0), 0.5, vec3(0.2, 1.0, 0.2), 0.05, 0.0, 1.5); // Green
+    scene[2] = Sphere(vec3(0.5, -0.5, -3.0), 0.5, vec3(0.2, 0.2, 1.0), 0.05, 0.0, 1.5);  // Blue
+    scene[3] = Sphere(vec3(0.0, 0.366, -3.0), 0.5, vec3(1.0, 0.2, 0.2), 0.05, 0.0, 1.5);  // Red
+
+    // --- NEW: Define the Torus ---
+    // Place it as a halo above the pyramid.
+    scene_torus.center = vec3(0.0, 1.2, -3.0);
+    scene_torus.normal = vec3(0.0, 1.0, 0.0); // Flat on the XZ plane
+    scene_torus.major_radius = 0.8;
+    scene_torus.minor_radius = 0.2;
+    scene_torus.color = vec3(1.0, 0.8, 0.2); // A gold color
+    scene_torus.reflectivity = 0.4;
+    scene_torus.transparency = 0.0;
+    scene_torus.refractive_index = 1.0;
 
     // --- Primary Ray Generation ---
     vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / u_resolution.y;
@@ -373,29 +593,12 @@ void main() {
     const int max_depth = 10;
 
     Ray primary_ray;
-    
-    // --- Manual Camera Setup ---
-    // This approach gives you direct control over the camera's position and orientation.
-    
-    // 1. Set the camera's position in the world.
     primary_ray.origin = u_camera_pos;
 
-    // 2. Define the direction the camera is looking. This is the 'forward' vector.
-    //    It must be a normalized direction vector. To look at the origin from the camera's
-    //    position, you would use: normalize(vec3(0.0) - primary_ray.origin)
-    // --- To move without rotating, we can define a fixed forward direction ---
-    // This camera will always look straight ahead along the world's negative Z-axis.
-    // Now, changing the z-component of primary_ray.origin will move the camera forward/backward.
     vec3 camera_fwd = vec3(-1.0, -0.3, 0.0);
-
-    // 3. Define a temporary 'up' direction. This helps orient the camera.
-    //    It controls the camera's roll. For no roll, (0, 1, 0) is standard.
     vec3 temp_up = vec3(0.0, 1.0, 0.0);
-
-    // 4. Calculate the camera's 'right' and true 'up' vectors to form an orthonormal basis.
-    //    This ensures the vectors are perpendicular, creating a stable view.
     vec3 camera_right = normalize(cross(camera_fwd, temp_up));
-    vec3 camera_up = normalize(cross(camera_right, camera_fwd)); // Recalculate 'up' to ensure it's orthogonal
+    vec3 camera_up = normalize(cross(camera_right, camera_fwd)); 
 
     primary_ray.direction = normalize(
         uv.x * camera_right + 
