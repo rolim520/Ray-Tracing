@@ -3,7 +3,7 @@ out vec4 FragColor;
 
 // Uniforms passed from Python
 uniform vec2 u_resolution;
-uniform vec3 u_camera_pos;
+uniform mat4 u_camera_to_world; // REPLACES u_camera_pos
 uniform vec3 u_light_pos;
 
 // --- Data Structures ---
@@ -59,10 +59,6 @@ struct RayState {
 const int NUM_SPHERES = 4;
 Sphere scene[NUM_SPHERES];
 Torus scene_torus;
-const vec3 BACKGROUND_COLOR = vec3(0.1, 0.1, 0.1); // Corresponds to "Return the background color"
-
-// Forward declaration for the recursive function
-vec3 RayTrace(Ray ray, int depth);
 
 // --- Ray-Sphere Intersection ---
 // Solves the quadratic equation for ray-sphere intersection.
@@ -468,7 +464,7 @@ float calculate_fresnel(float cos_theta, float n1, float n2) {
  * @param max_depth The maximum number of times a ray is allowed to bounce.
  * @return The final calculated color for the ray path.
  */
-vec3 RayTraceIterative(Ray initial_ray, int max_depth) {
+vec3 RayTraceIterative(Ray initial_ray, int max_depth, vec3 camera_pos) {
     vec3 final_color = vec3(0.0);
 
     const int STACK_SIZE = 16;
@@ -525,7 +521,7 @@ vec3 RayTraceIterative(Ray initial_ray, int max_depth) {
 
         float local_coef = 1.0 - hit.reflectivity - hit.transparency;
         if (local_coef > 0.0) {
-            vec3 local_color = phong_lighting(hit, u_light_pos, u_camera_pos);
+            vec3 local_color = phong_lighting(hit, u_light_pos, camera_pos);
             final_color += local_color * local_coef * current_state.throughput;
         }
 
@@ -566,40 +562,33 @@ vec3 RayTraceIterative(Ray initial_ray, int max_depth) {
 
 
 void main() {
-    // --- Setup the Scene ---
-    // The ground plane is at y = -1.0.
-
-    // The spheres making up the pyramid
-    scene[0] = Sphere(vec3(0.0, 0.0, -0.6), 1.0, vec3(1.0, 1.0, 1.0), 0.1, 0.9, 1.5); // Glass Sphere (Not used in pyramid)
-    scene[1] = Sphere(vec3(-0.5, -0.5, -3.0), 0.5, vec3(0.2, 1.0, 0.2), 0.05, 0.0, 1.5); // Green
-    scene[2] = Sphere(vec3(0.5, -0.5, -3.0), 0.5, vec3(0.2, 0.2, 1.0), 0.05, 0.0, 1.5);  // Blue
-    scene[3] = Sphere(vec3(0.0, 0.366, -3.0), 0.5, vec3(1.0, 0.2, 0.2), 0.05, 0.0, 1.5);  // Red
-
-    // --- NEW: Define the Torus ---
-    // Place it as a halo above the pyramid.
+    // --- Setup the Scene (no change) ---
+    scene[0] = Sphere(vec3(0.0, 0.0, -0.6), 1.0, vec3(1.0, 1.0, 1.0), 0.1, 0.9, 1.5);
+    scene[1] = Sphere(vec3(-0.5, -0.5, -3.0), 0.5, vec3(0.2, 1.0, 0.2), 0.05, 0.0, 1.5);
+    scene[2] = Sphere(vec3(0.5, -0.5, -3.0), 0.5, vec3(0.2, 0.2, 1.0), 0.05, 0.0, 1.5);
+    scene[3] = Sphere(vec3(0.0, 0.366, -3.0), 0.5, vec3(1.0, 0.2, 0.2), 0.05, 0.0, 1.5);
     scene_torus.center = vec3(0.0, 1.2, -3.0);
-    scene_torus.normal = vec3(0.0, 1.0, 0.0); // Flat on the XZ plane
+    scene_torus.normal = vec3(0.0, 1.0, 0.0);
     scene_torus.major_radius = 0.8;
     scene_torus.minor_radius = 0.2;
-    scene_torus.color = vec3(1.0, 0.8, 0.2); // A gold color
+    scene_torus.color = vec3(1.0, 0.8, 0.2);
     scene_torus.reflectivity = 0.4;
     scene_torus.transparency = 0.0;
     scene_torus.refractive_index = 1.0;
 
-    // --- Primary Ray Generation ---
+    // --- Primary Ray Generation (THE CHANGE) ---
     vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / u_resolution.y;
-
-    const float focal_length = 1.5;
+    const float focal_length = 2.0; // A longer focal length "zooms in"
     const int max_depth = 10;
 
+    // Deconstruct the camera matrix to get its position and orientation
+    vec3 camera_pos   = u_camera_to_world[3].xyz;
+    vec3 camera_right = u_camera_to_world[0].xyz;
+    vec3 camera_up    = u_camera_to_world[1].xyz;
+    vec3 camera_fwd   = u_camera_to_world[2].xyz;
+
     Ray primary_ray;
-    primary_ray.origin = u_camera_pos;
-
-    vec3 camera_fwd = vec3(-1.0, -0.3, 0.0);
-    vec3 temp_up = vec3(0.0, 1.0, 0.0);
-    vec3 camera_right = normalize(cross(camera_fwd, temp_up));
-    vec3 camera_up = normalize(cross(camera_right, camera_fwd)); 
-
+    primary_ray.origin = camera_pos;
     primary_ray.direction = normalize(
         uv.x * camera_right + 
         uv.y * camera_up + 
@@ -607,7 +596,8 @@ void main() {
     );
     
     // --- Trace and Color ---
-    vec3 final_color = RayTraceIterative(primary_ray, max_depth);
+    // Pass the camera position to the ray tracer.
+    vec3 final_color = RayTraceIterative(primary_ray, max_depth, camera_pos);
 
     FragColor = vec4(final_color, 1.0);
 }
