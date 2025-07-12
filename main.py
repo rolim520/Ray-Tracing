@@ -4,6 +4,9 @@ import glfw
 from OpenGL.GL import *
 import numpy as np
 
+# Add this global variable near the top with the other globals
+focal_length = 2.0
+
 # --- Helper Functions (no changes) ---
 
 def read_shader_file(filename):
@@ -34,6 +37,23 @@ def normalize(v):
     if norm == 0: 
        return v
     return v / norm
+
+# Add this new function anywhere before the main() function
+def scroll_callback(window, x_offset, y_offset):
+    """
+    Handles mouse scroll wheel input to adjust the camera's focal length for zooming.
+    """
+    global focal_length
+    # y_offset is positive for scroll up (zoom in), negative for scroll down (zoom out)
+    zoom_speed = 0.2
+    focal_length += y_offset * zoom_speed
+
+    
+    # Clamp the focal length to a reasonable range to prevent issues
+    if focal_length < 0.5:
+        focal_length = 0.5
+    if focal_length > 10.0:
+        focal_length = 10.0
 
 # --- FINAL CORRECTED: Input Processing for Ground-Parallel Movement ---
 
@@ -119,6 +139,7 @@ def main():
 
     glfw.make_context_current(window)
     glfw.set_framebuffer_size_callback(window, framebuffer_size_callback)
+    glfw.set_scroll_callback(window, scroll_callback)
     
     # --- Code is the same until the Main Loop ---
     vertex_shader = compile_shader(read_shader_file("vertex_shader.glsl"), GL_VERTEX_SHADER)
@@ -145,7 +166,8 @@ def main():
     locations = {
         "u_resolution": glGetUniformLocation(shader_program, "u_resolution"),
         "u_light_pos": glGetUniformLocation(shader_program, "u_light_pos"),
-        "u_camera_to_world": glGetUniformLocation(shader_program, "u_camera_to_world")
+        "u_camera_to_world": glGetUniformLocation(shader_program, "u_camera_to_world"),
+        "u_focal_length": glGetUniformLocation(shader_program, "u_focal_length")
     }
     eye = np.array([3.0, 1.0, 1.5], dtype=np.float32)
     target = np.array([0.0, 0.0, -3.0], dtype=np.float32)
@@ -186,6 +208,7 @@ def main():
         
         # --- THE ONLY CHANGE IS HERE ---
         glUniformMatrix4fv(locations["u_camera_to_world"], 1, GL_TRUE, camera_to_world)
+        glUniform1f(locations["u_focal_length"], focal_length)
         
         glBindVertexArray(VAO)
         glDrawArrays(GL_TRIANGLES, 0, 6)

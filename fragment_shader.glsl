@@ -5,6 +5,7 @@ out vec4 FragColor;
 uniform vec2 u_resolution;
 uniform mat4 u_camera_to_world; // REPLACES u_camera_pos
 uniform vec3 u_light_pos;
+uniform float u_focal_length;
 
 // --- Data Structures ---
 // A ray is an origin and a direction
@@ -638,7 +639,6 @@ void main() {
 
     // --- Primary Ray Generation (THE CHANGE) ---
     vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / u_resolution.y;
-    const float focal_length = 2.0; // A longer focal length "zooms in"
     const int max_depth = 10;
 
     // Deconstruct the camera matrix to get its position and orientation
@@ -652,7 +652,7 @@ void main() {
     primary_ray.direction = normalize(
         uv.x * camera_right + 
         uv.y * camera_up + 
-        focal_length * camera_fwd
+        u_focal_length * camera_fwd
     );
     
     // --- Trace and Color ---
