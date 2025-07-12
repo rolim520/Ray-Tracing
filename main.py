@@ -107,10 +107,19 @@ class App:
         self.last_frame_time = 0.0
         self.delta_time = 0.0
 
+        # Definição da cena
+        self.scene = [
+            # Esferas
+            {'type': 1, 'center': [0.0, 0.0, -0.6], 'radius': 1.0, 'color': [1.0, 1.0, 1.0], 'reflectivity': 0.1, 'transparency': 0.9, 'refractive_index': 1.5},
+            {'type': 1, 'center': [-0.5, -0.5, -3.0], 'radius': 0.5, 'color': [0.2, 1.0, 0.2], 'reflectivity': 0.05, 'transparency': 0.0, 'refractive_index': 1.5},
+            {'type': 1, 'center': [0.5, -0.5, -3.0], 'radius': 0.5, 'color': [0.2, 0.2, 1.0], 'reflectivity': 0.05, 'transparency': 0.0, 'refractive_index': 1.5},
+            {'type': 1, 'center': [0.0, 0.366, -3.0], 'radius': 0.5, 'color': [1.0, 0.2, 0.2], 'reflectivity': 0.05, 'transparency': 0.0, 'refractive_index': 1.5},
+            {'type': 2, 'center': [0.0, 1.2, -3.0], 'normal': [0.0, 1.0, 0.0], 'major_radius': 0.8, 'minor_radius': 0.2, 'color': [1.0, 0.8, 0.2], 'reflectivity': 0.4, 'transparency': 0.0, 'refractive_index': 1.0},
+        ]
+
         # Inicializa a biblioteca GLFW
         if not glfw.init():
             raise Exception("Não foi possível inicializar o GLFW")
-
         # Define a versão do OpenGL (3.3 Core)
         glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
@@ -194,8 +203,22 @@ class App:
             "u_resolution": glGetUniformLocation(self.shader_program, "u_resolution"),
             "u_light_pos": glGetUniformLocation(self.shader_program, "u_light_pos"),
             "u_camera_to_world": glGetUniformLocation(self.shader_program, "u_camera_to_world"),
-            "u_focal_length": glGetUniformLocation(self.shader_program, "u_focal_length")
+            "u_focal_length": glGetUniformLocation(self.shader_program, "u_focal_length"),
+            "scene": []
         }
+        for i in range(len(self.scene)):
+            self.locations["scene"].append({
+                "type": glGetUniformLocation(self.shader_program, f"scene[{i}].type"),
+                "center": glGetUniformLocation(self.shader_program, f"scene[{i}].center"),
+                "radius": glGetUniformLocation(self.shader_program, f"scene[{i}].radius"),
+                "normal": glGetUniformLocation(self.shader_program, f"scene[{i}].normal"),
+                "major_radius": glGetUniformLocation(self.shader_program, f"scene[{i}].major_radius"),
+                "minor_radius": glGetUniformLocation(self.shader_program, f"scene[{i}].minor_radius"),
+                "color": glGetUniformLocation(self.shader_program, f"scene[{i}].color"),
+                "reflectivity": glGetUniformLocation(self.shader_program, f"scene[{i}].reflectivity"),
+                "transparency": glGetUniformLocation(self.shader_program, f"scene[{i}].transparency"),
+                "refractive_index": glGetUniformLocation(self.shader_program, f"scene[{i}].refractive_index"),
+            })
 
     def render(self):
         """Função de renderização chamada a cada quadro."""
@@ -231,6 +254,22 @@ class App:
         glUniform3f(self.locations["u_light_pos"], -2.0, 4.0, 1.0) # Posição da luz fixa
         glUniformMatrix4fv(self.locations["u_camera_to_world"], 1, GL_TRUE, camera_to_world)
         glUniform1f(self.locations["u_focal_length"], self.focal_length)
+
+        # Envia os dados da cena para a GPU
+        for i, obj in enumerate(self.scene):
+            loc = self.locations["scene"][i]
+            glUniform1i(loc["type"], obj["type"])
+            glUniform3fv(loc["center"], 1, obj["center"])
+            glUniform3fv(loc["color"], 1, obj["color"])
+            glUniform1f(loc["reflectivity"], obj["reflectivity"])
+            glUniform1f(loc["transparency"], obj["transparency"])
+            glUniform1f(loc["refractive_index"], obj["refractive_index"])
+            if obj["type"] == 1: # Esfera
+                glUniform1f(loc["radius"], obj["radius"])
+            elif obj["type"] == 2: # Toro
+                glUniform3fv(loc["normal"], 1, obj["normal"])
+                glUniform1f(loc["major_radius"], obj["major_radius"])
+                glUniform1f(loc["minor_radius"], obj["minor_radius"])
 
         # Desenha o quad de tela cheia
         glBindVertexArray(self.VAO)

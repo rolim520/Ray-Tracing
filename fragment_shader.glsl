@@ -8,6 +8,10 @@ uniform vec3 u_light_pos;
 uniform float u_focal_length;
 
 // --- Data Structures ---
+// Type constants for scene objects
+const int SHAPE_SPHERE = 1;
+const int SHAPE_TORUS = 2;
+
 // A ray is an origin and a direction
 struct Ray {
     vec3 origin;
@@ -26,22 +30,18 @@ struct HitInfo {
     float refractive_index;
 };
 
-// A sphere is a center, radius, color and reflectivity
-struct Sphere {
-    vec3 center;
-    float radius;
-    vec3 color;
-    float reflectivity;
-    float transparency;
-    float refractive_index;
-};
+// A unified scene object that can be a sphere or a torus
+struct SceneObject {
+    int type;
 
-// A torus is a center, orientation, radii, and material properties.
-struct Torus {
+    // Geometric properties
     vec3 center;
-    vec3 normal; // The axis the torus is wrapped around (e.g., (0,1,0) for a flat donut)
-    float major_radius;
-    float minor_radius;
+    float radius;       // For sphere
+    vec3 normal;        // For torus
+    float major_radius; // For torus
+    float minor_radius; // For torus
+
+    // Material properties
     vec3 color;
     float reflectivity;
     float transparency;
@@ -57,14 +57,13 @@ struct RayState {
 };
 
 // --- Scene Definition ---
-const int NUM_SPHERES = 4;
-Sphere scene[NUM_SPHERES];
-Torus scene_torus;
+const int NUM_OBJECTS = 5;
+uniform SceneObject scene[NUM_OBJECTS];
 
 // --- Ray-Sphere Intersection ---
 // Solves the quadratic equation for ray-sphere intersection.
 // Returns a HitInfo struct.
-HitInfo intersect_sphere(Ray ray, Sphere s) {
+HitInfo intersect_sphere(Ray ray, SceneObject s) {
     HitInfo info;
     info.hit = false;
     vec3 oc = ray.origin - s.center;
@@ -304,7 +303,7 @@ int solve_quartic(float a, float b, float c, float d, out vec4 roots) {
 
 
 // --- Corrected Ray-Torus Intersection ---
-HitInfo intersect_torus(Ray ray, Torus torus) {
+HitInfo intersect_torus(Ray ray, SceneObject torus) {
     HitInfo info;
     info.hit = false;
 
@@ -390,15 +389,21 @@ HitInfo intersect_torus(Ray ray, Torus torus) {
 }
 
 
-// This version correctly checks for intersections with the torus.
+// This version correctly checks for intersections with all scene objects.
 HitInfo trace(Ray ray) {
     HitInfo closest_hit;
     closest_hit.hit = false;
     closest_hit.t = 1e30; // A very large number (infinity)
 
-    // Check intersections with all spheres in the scene
-    for (int i = 0; i < NUM_SPHERES; ++i) {
-        HitInfo current_hit = intersect_sphere(ray, scene[i]);
+    // Check intersections with all objects in the scene
+    for (int i = 0; i < NUM_OBJECTS; ++i) {
+        HitInfo current_hit;
+        if (scene[i].type == SHAPE_SPHERE) {
+            current_hit = intersect_sphere(ray, scene[i]);
+        } else if (scene[i].type == SHAPE_TORUS) {
+            current_hit = intersect_torus(ray, scene[i]);
+        }
+
         if (current_hit.hit && current_hit.t < closest_hit.t) {
             closest_hit = current_hit;
         }
@@ -409,13 +414,6 @@ HitInfo trace(Ray ray) {
     if (plane_hit.hit && plane_hit.t < closest_hit.t) {
         closest_hit = plane_hit;
     }
-
-    // Check for intersection with the torus.
-    HitInfo torus_hit = intersect_torus(ray, scene_torus);
-    if (torus_hit.hit && torus_hit.t < closest_hit.t) {
-        closest_hit = torus_hit;
-    }
-    // -----------------------------
 
     return closest_hit;
 }
@@ -623,19 +621,7 @@ vec3 RayTraceIterative(Ray initial_ray, int max_depth, vec3 camera_pos) {
 
 
 void main() {
-    // --- Setup the Scene (no change) ---
-    scene[0] = Sphere(vec3(0.0, 0.0, -0.6), 1.0, vec3(1.0, 1.0, 1.0), 0.1, 0.9, 1.5);
-    scene[1] = Sphere(vec3(-0.5, -0.5, -3.0), 0.5, vec3(0.2, 1.0, 0.2), 0.05, 0.0, 1.5);
-    scene[2] = Sphere(vec3(0.5, -0.5, -3.0), 0.5, vec3(0.2, 0.2, 1.0), 0.05, 0.0, 1.5);
-    scene[3] = Sphere(vec3(0.0, 0.366, -3.0), 0.5, vec3(1.0, 0.2, 0.2), 0.05, 0.0, 1.5);
-    scene_torus.center = vec3(0.0, 1.2, -3.0);
-    scene_torus.normal = vec3(0.0, 1.0, 0.0);
-    scene_torus.major_radius = 0.8;
-    scene_torus.minor_radius = 0.2;
-    scene_torus.color = vec3(1.0, 0.8, 0.2);
-    scene_torus.reflectivity = 0.4;
-    scene_torus.transparency = 0.0;
-    scene_torus.refractive_index = 1.0;
+    
 
     // --- Primary Ray Generation (THE CHANGE) ---
     vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / u_resolution.y;
