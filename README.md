@@ -53,6 +53,22 @@ python main.py
 ```
 > **Nota:** Se o comando acima não funcionar, tente usar `python3` em vez de `python`. Isso é comum em sistemas Linux e macOS onde múltiplas versões do Python estão instaladas.
 
+### Solução de Problemas
+
+**Desempenho baixo ou crashes**
+
+A performance deste projeto é **extremamente** dependente da resolução da janela, pois o ray tracing é calculado para cada pixel. Se você estiver experienciando baixo FPS (frames per second) ou o programa fechar inesperadamente, a causa mais provável é que sua placa de vídeo não está conseguindo acompanhar a carga de trabalho em tempo real.
+
+A solução mais simples é **reduzir o tamanho da janela**.
+
+Você pode fazer isso editando a última linha do arquivo `main.py`:
+
+```python
+# Altere os valores 800, 800 para uma resolução menor, como 600, 400.
+app = App(800, 800)
+app.run()
+```
+
 
 ## Controles
 

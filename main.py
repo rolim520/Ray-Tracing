@@ -41,6 +41,12 @@ Controles:
 - Scroll do Mouse: Ajustar o zoom (distância focal).
 - ESC: Capturar/Liberar o cursor do mouse.
 - Clique na janela: Re-capturar o mouse se ele estiver liberado.
+
+IMPORTANTE: Se o programa apresentar baixo desempenho ou fechar inesperadamente,
+tente reduzir a resolução da janela. A performance é diretamente
+impactada pelo número de pixels a serem renderizados.
+Altere os valores de largura e altura na linha 'app = App(width, height)'
+no final deste arquivo.
 """
 
 import sys
@@ -436,7 +442,7 @@ class App:
 if __name__ == "__main__":
     try:
         # Cria e executa a aplicação
-        app = App(1000, 800)
+        app = App(800, 800)
         app.run()
     except Exception as e:
         # Captura e exibe qualquer erro que possa ocorrer
