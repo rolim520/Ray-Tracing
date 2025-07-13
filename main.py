@@ -26,10 +26,10 @@ Bibliotecas necessárias:
 - GLFW
 - NumPy
 
-Como instalar as bibliotecas:
-pip install PyOpenGL glfw numpy
-
-Como executar o programa:
+# Como instalar as bibliotecas:
+# pip install PyOpenGL PyOpenGL-accelerate glfw numpy
+#
+# Como executar o programa:
 python main.py
 # (Em alguns sistemas Linux/macOS, pode ser necessário usar python3 main.py)
 

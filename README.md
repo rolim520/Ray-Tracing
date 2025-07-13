@@ -41,7 +41,7 @@ Este não é um projeto OpenGL comum que utiliza a pipeline de rasterização pa
 Abra seu terminal (ou **Command Prompt/PowerShell** no Windows) e instale as bibliotecas necessárias com o seguinte comando:
 
 ```bash
-pip install PyOpenGL glfw numpy
+pip install PyOpenGL PyOpenGL-accelerate glfw numpy
 ```
 
 ### Execução
