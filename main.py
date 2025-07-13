@@ -15,6 +15,8 @@ Este script Python é responsável por:
 - Gerenciar a câmera e a entrada do usuário (teclado e mouse).
 - Enviar os dados necessários (uniforms) para os shaders a cada quadro.
 
+Link do Repositório: https://github.com/rolim520/Ray-Tracing
+
 Pré-requisitos:
 - Python 3.x
 - Placa de vídeo com suporte a OpenGL 3.3+
@@ -29,6 +31,7 @@ pip install PyOpenGL glfw numpy
 
 Como executar o programa:
 python main.py
+# (Em alguns sistemas Linux/macOS, pode ser necessário usar python3 main.py)
 
 Controles:
 - W, A, S, D: Mover a câmera para frente, esquerda, trás e direita.
