@@ -69,7 +69,7 @@ def read_shader_file(filename):
     if not os.path.exists(filename):
         print(f"ERRO: Arquivo de shader não encontrado: {filename}")
         sys.exit()
-    with open(filename, 'r') as f:
+    with open(filename, 'r', encoding='utf-8') as f:
         return f.read()
 
 def compile_shader(source, shader_type):
@@ -100,13 +100,13 @@ class App:
         self.height = height
 
         # Estado da câmera
-        self.eye = np.array([3.0, 1.0, 1.5], dtype=np.float32)  # Posição inicial da câmera (olho)
+        self.eye = np.array([4.0, 1.2, 3.0], dtype=np.float32)
         self.up_vector = np.array([0.0, 1.0, 0.0], dtype=np.float32) # Vetor 'up' do mundo
         self.focal_length = 2.0  # Distância focal inicial
 
         # Estado do mouse e orientação da câmera
-        self.yaw = -90.0  # Rotação horizontal (guinada)
-        self.pitch = 0.0  # Rotação vertical (inclinação)
+        self.yaw = -135.0
+        self.pitch = -12.0
         self.last_x = width / 2
         self.last_y = height / 2
         self.first_mouse = True  # Flag para o primeiro movimento do mouse
@@ -165,7 +165,7 @@ class App:
         # Compila os shaders e configura os recursos da GPU
         self.setup_rendering()
 
-        print("Executando o ray tracer... Use WASD, Espaço e Shift para mover.")
+        print("Use WASD, Espaço e Shift para mover.")
         print("Use o mouse para olhar ao redor. Use o scroll para dar zoom.")
         print("Pressione ESC para capturar/liberar o mouse.")
         print("Clique na janela para re-capturar o mouse.")
