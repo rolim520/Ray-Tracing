@@ -12,7 +12,7 @@ Este não é um projeto OpenGL comum que utiliza a pipeline de rasterização pa
 
 - **Implementação Iterativa:** Para superar as limitações de recursão em GLSL, o traçado de raios para reflexões e refrações é feito de forma iterativa, utilizando uma pilha de raios gerenciada manualmente no shader.
 
-- **Interseções Matemáticas Complexas:** O shader inclui resolvedores para equações quadráticas, cúbicas e quârticas para calcular com precisão a interseção de raios com diferentes formas geométricas, como esferas e **toros** (que exigem a resolução de uma equação quârtica).
+- **Interseções Matemáticas Complexas:** O shader inclui resolvedores para equações quadráticas, cúbicas e quárticas para calcular com precisão a interseção de raios com diferentes formas geométricas, como esferas e **toros** (que exigem a resolução de uma equação quártica).
 
 - **Efeitos Ópticos Avançados:**
   - **Reflexão e Refração:** Objetos podem ser reflexivos ou transparentes.
