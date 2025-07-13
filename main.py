@@ -169,7 +169,6 @@ class App:
         print("Use o mouse para olhar ao redor. Use o scroll para dar zoom.")
         print("Pressione ESC para capturar/liberar o mouse.")
         print("Clique na janela para re-capturar o mouse.")
-        print("Feche a janela no botão 'X' para sair.")
 
         # Loop principal de renderização
         while not glfw.window_should_close(self.window):
