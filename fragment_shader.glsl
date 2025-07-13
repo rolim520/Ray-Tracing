@@ -383,6 +383,36 @@ HitInfo trace(Ray ray) {
 
     // Verifica a interseção com todos os objetos na cena
     for (int i = 0; i < NUM_OBJECTS; ++i) {
+        // --- Otimização: Verificação da Esfera Delimitadora (Bounding Sphere) ---
+        // Antes de fazer o teste de interseção preciso e caro (especialmente para o toro),
+        // fazemos um teste barato contra a esfera delimitadora do objeto.
+        // Se o raio não puder atingir essa esfera mais perto do que o acerto mais próximo
+        // que já encontramos, podemos pular o teste caro com segurança.
+        float bounding_radius;
+        if (scene[i].type == SHAPE_SPHERE) {
+            bounding_radius = scene[i].radius;
+        } else { // SHAPE_TORUS
+            bounding_radius = scene[i].major_radius + scene[i].minor_radius;
+        }
+
+        // Teste de interseção de esfera simplificado que retorna apenas 't'.
+        vec3 oc = ray.origin - scene[i].center;
+        float b = dot(oc, ray.direction);
+        float c = dot(oc, oc) - bounding_radius * bounding_radius;
+        float discriminant = b*b - c; // Como a direção do raio é normalizada, a=1
+
+        // Se o raio erra a esfera delimitadora, pule para o próximo objeto.
+        if (discriminant < 0.0) {
+            continue;
+        }
+
+        // Se a esfera delimitadora está mais longe que o objeto mais próximo já encontrado, pule.
+        float t_bound = -b - sqrt(discriminant);
+        if (t_bound > closest_hit.t) {
+            continue;
+        }
+        // --- Fim da Verificação da Esfera Delimitadora ---
+
         HitInfo current_hit;
         if (scene[i].type == SHAPE_SPHERE) {
             current_hit = intersect_sphere(ray, scene[i]);
@@ -420,15 +450,16 @@ vec3 calculate_light_attenuation(vec3 point, vec3 light_pos) {
     float distance_traveled = 0.0;
 
     // Itera para encontrar múltiplos objetos transparentes no caminho da luz.
-    for(int i = 0; i < 5; i++) { 
+    for(int i = 0; i < 2; i++) { 
         HitInfo hit = trace(shadow_ray);
 
         // Se atingir um objeto que está entre o ponto e a luz...
         if (hit.hit && (hit.t + distance_traveled < light_dist)) {
             
-            // Calcula o filtro para ESTE objeto. É uma mistura entre preto puro
-            // (sem luz) e a cor do objeto, com base em sua transparência.
-            vec3 object_filter = mix(vec3(0.0), hit.color, hit.transparency);
+            // Calcula o filtro de luz para este objeto. A luz que passa é
+            // tingida pela cor do objeto e atenuada por sua transparência.
+            // Um objeto totalmente opaco (transparency=0) terá um filtro preto.
+            vec3 object_filter = hit.color * hit.transparency;
 
             // Multiplica nosso filtro de luz acumulado pelo filtro deste objeto.
             light_filter *= object_filter;
@@ -513,7 +544,7 @@ float calculate_fresnel(float cos_theta, float n1, float n2) {
 vec3 RayTraceIterative(Ray initial_ray, int max_depth, vec3 camera_pos) {
     vec3 final_color = vec3(0.0);
 
-    const int STACK_SIZE = 16; // Tamanho máximo da pilha de raios
+    const int STACK_SIZE = 3; // Tamanho máximo da pilha de raios
     RayState stack[STACK_SIZE];
     int stack_ptr = 0;
 
@@ -619,7 +650,7 @@ vec3 RayTraceIterative(Ray initial_ray, int max_depth, vec3 camera_pos) {
 void main() {
     // Converte as coordenadas do pixel (gl_FragCoord) para coordenadas de tela normalizadas (-1 a 1).
     vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / u_resolution.y;
-    const int max_depth = 10; // Profundidade máxima de recursão para os raios
+    const int max_depth = 4; // Profundidade máxima de recursão para os raios
 
     // Desconstrói a matriz da câmera para obter sua posição e vetores de orientação.
     vec3 camera_pos   = u_camera_to_world[3].xyz;

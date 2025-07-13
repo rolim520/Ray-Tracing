@@ -110,6 +110,11 @@ class App:
         self.last_frame_time = 0.0
         self.delta_time = 0.0
 
+        # Controle de FPS
+        self.frame_count = 0
+        self.last_fps_time = 0.0
+        self.fps = 0
+
         # Definição da cena
         self.scene = [
             # Esferas
@@ -136,6 +141,7 @@ class App:
             raise Exception("Não foi possível criar a janela GLFW")
 
         glfw.make_context_current(self.window)
+        glfw.swap_interval(0) # Desativa o V-Sync para não limitar o FPS
 
         # Define as funções de callback para eventos
         glfw.set_window_user_pointer(self.window, self)
@@ -169,10 +175,17 @@ class App:
         self.cleanup() # Libera os recursos ao sair
 
     def update_timing(self):
-        """Calcula o tempo decorrido desde o último quadro (delta time)."""
+        """Calcula o tempo decorrido desde o último quadro (delta time) e o FPS."""
         current_time = glfw.get_time()
         self.delta_time = current_time - self.last_frame_time
         self.last_frame_time = current_time
+
+        # Calcula o FPS
+        self.frame_count += 1
+        if current_time - self.last_fps_time >= 1.0:
+            self.fps = self.frame_count
+            self.frame_count = 0
+            self.last_fps_time = current_time
 
     def setup_rendering(self):
         """Configura o programa de shader e os buffers de vértices."""
@@ -225,6 +238,9 @@ class App:
 
     def render(self):
         """Função de renderização chamada a cada quadro."""
+        # Atualiza o título da janela com o FPS
+        glfw.set_window_title(self.window, f"Ray Tracer com Python e GLFW - FPS: {self.fps}")
+
         glClearColor(0.0, 0.0, 0.0, 1.0) # Cor de fundo preta
         glClear(GL_COLOR_BUFFER_BIT)
         glUseProgram(self.shader_program) # Ativa o programa de shader
