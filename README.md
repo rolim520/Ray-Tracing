@@ -1,7 +1,5 @@
 # Projeto de Ray Tracing em Tempo Real com Python e OpenGL
 
-**Repositório no GitHub:** [https://github.com/rolim520/Ray-Tracing](https://github.com/rolim520/Ray-Tracing)
-
 ![Imagem 1](Imagens/imagem%201.png)
 
 Este projeto é uma implementação de um renderizador 3D que utiliza a técnica de **Ray Tracing em tempo real**, executado inteiramente na GPU através de um Fragment Shader em GLSL. O script Python atua como um "host" para a aplicação, gerenciando a janela, a câmera e enviando os dados da cena para a GPU, mas toda a complexa lógica de renderização ocorre no shader.
@@ -65,3 +63,7 @@ python main.py
 *   **Scroll do Mouse**: Ajustar o zoom (distância focal).
 *   **ESC**: Capturar/Liberar o cursor do mouse para interagir com a janela.
 *   **Clique na janela**: Re-capturar o mouse se ele estiver liberado.
+
+## Links
+
+**Repositório no GitHub:** [https://github.com/rolim520/Ray-Tracing](https://github.com/rolim520/Ray-Tracing)
